@@ -1,0 +1,20 @@
+# Executables
+*.exe
+*.out
+
+# Object files
+*.o
+
+# PCAP output files
+output*.pcap
+
+# Build artifacts
+dpi_simple
+dpi_engine
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
