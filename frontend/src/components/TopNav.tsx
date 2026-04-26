@@ -1,11 +1,18 @@
-import React from 'react';
-import { Search, Bell, Settings, HelpCircle, Menu } from 'lucide-react';
+import { Search, Bell, Settings, HelpCircle, Menu, Loader2 } from 'lucide-react';
+import type { ConnectionStatus } from '../hooks/useSocket';
 
 interface TopNavProps {
   title: string;
+  connectionStatus: ConnectionStatus;
 }
 
-export default function TopNav({ title }: TopNavProps) {
+export default function TopNav({ title, connectionStatus }: TopNavProps) {
+  const statusConfig = {
+    connected:    { dot: 'bg-[#36B37E]', label: 'Live',          animate: 'animate-pulse' },
+    disconnected: { dot: 'bg-[#DE350B]', label: 'Disconnected',  animate: '' },
+    reconnecting: { dot: 'bg-[#FFAB00]', label: 'Reconnecting',  animate: '' },
+  }[connectionStatus];
+
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between px-6 h-16 w-full bg-white border-b border-outline-variant shadow-sm shrink-0">
       <div className="flex items-center gap-4">
@@ -16,6 +23,18 @@ export default function TopNav({ title }: TopNavProps) {
       </div>
 
       <div className="flex items-center gap-4">
+        {/* Connection status indicator */}
+        <div className="flex items-center gap-2 bg-surface-container-low border border-outline-variant rounded-full px-3 py-1.5 select-none">
+          {connectionStatus === 'reconnecting' ? (
+            <Loader2 className="w-3 h-3 text-[#FFAB00] animate-spin" />
+          ) : (
+            <div className={`w-2 h-2 rounded-full ${statusConfig.dot} ${statusConfig.animate}`} />
+          )}
+          <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+            {statusConfig.label}
+          </span>
+        </div>
+
         <div className="relative hidden sm:block w-64 lg:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-4 h-4" />
           <input

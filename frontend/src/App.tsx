@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Sidebar, { type Page } from './components/Sidebar';
 import TopNav from './components/TopNav';
 import Dashboard from './components/Dashboard';
@@ -7,41 +7,14 @@ import Rules from './components/Rules';
 import Logs from './components/Logs';
 import BottomNav from './components/BottomNav';
 import { motion, AnimatePresence } from 'motion/react';
+import { Toaster } from 'react-hot-toast';
+import { useSocket } from './hooks/useSocket';
 
-export type AppStats = {
-  metrics: {
-    totalPackets: number;
-    forwarded: number;
-    dropped: number;
-    activeFlows: number;
-  };
-  apps: { name: string; count: number; percentage: number; isBlocked: boolean }[];
-  domains: { domain: string; app: string }[];
-};
+export type { AppStats } from './hooks/useSocket';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
-  const [stats, setStats] = useState<AppStats | null>(null);
-
-  const fetchStats = async () => {
-    try {
-      const res = await fetch('http://localhost:3001/api/stats');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.metrics && data.metrics.totalPackets > 0) {
-          setStats(data);
-        }
-      }
-    } catch {
-      // Backend not running — no-op, stays null
-    }
-  };
-
-  useEffect(() => {
-    fetchStats();
-    const interval = setInterval(fetchStats, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  const { socket, status, stats } = useSocket();
 
   const getPageTitle = () => {
     switch (activePage) {
@@ -58,7 +31,7 @@ export default function App() {
       <Sidebar activePage={activePage} onPageChange={setActivePage} />
       
       <div className="flex-1 flex flex-col md:ml-64 w-full h-screen overflow-hidden">
-        <TopNav title={getPageTitle()} />
+        <TopNav title={getPageTitle()} connectionStatus={status} />
         
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-7xl mx-auto">
@@ -71,7 +44,7 @@ export default function App() {
                 transition={{ duration: 0.2 }}
               >
                 {activePage === 'dashboard' && <Dashboard stats={stats} />}
-                {activePage === 'upload' && <Upload onUploadSuccess={fetchStats} />}
+                {activePage === 'upload' && <Upload socket={socket} />}
                 {activePage === 'rules' && <Rules />}
                 {activePage === 'logs' && <Logs stats={stats} />}
               </motion.div>
@@ -83,6 +56,19 @@ export default function App() {
       </div>
 
       <BottomNav activePage={activePage} onPageChange={setActivePage} />
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: '#091E42',
+            color: '#fff',
+            fontSize: '14px',
+            fontWeight: 600,
+            borderRadius: '12px',
+            border: '1px solid rgba(255,255,255,0.1)',
+          },
+        }}
+      />
     </div>
   );
 }

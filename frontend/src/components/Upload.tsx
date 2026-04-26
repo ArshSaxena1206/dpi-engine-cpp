@@ -1,10 +1,12 @@
-import React, { useState, useRef } from 'react';
-import { CloudUpload, FileText, X, CheckCircle2, Download, Cpu } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { CloudUpload, FileText, X, CheckCircle2, Download, Cpu, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
+import toast from 'react-hot-toast';
+import type { Socket } from 'socket.io-client';
 
 interface UploadProps {
-  onUploadSuccess: () => void;
+  socket: Socket;
 }
 
 type FileEntry = {
@@ -12,14 +14,55 @@ type FileEntry = {
   name: string;
   size: string;
   progress: number;
-  status: 'uploading' | 'completed' | 'error';
+  stage: string;
+  status: 'uploading' | 'processing' | 'completed' | 'error';
   outputFile?: string;
+  jobId?: number | string;
+  resultStats?: { forwarded: number; dropped: number; total: number };
 };
 
-export default function Upload({ onUploadSuccess }: UploadProps) {
+export default function Upload({ socket }: UploadProps) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Socket listeners for job progress / done ─────────────────
+  useEffect(() => {
+    const onProgress = (data: { jobId: number | string; progress: number; stage: string }) => {
+      setFiles(prev => prev.map(f =>
+        f.jobId !== undefined && String(f.jobId) === String(data.jobId)
+          ? { ...f, progress: data.progress, stage: data.stage, status: data.stage === 'Failed' ? 'error' : 'processing' }
+          : f
+      ));
+    };
+
+    const onDone = (data: { jobId: number | string; stats: { metrics: { forwarded: number; dropped: number; totalPackets: number } }; outputFile: string }) => {
+      setFiles(prev => prev.map(f =>
+        f.jobId !== undefined && String(f.jobId) === String(data.jobId)
+          ? {
+              ...f,
+              progress: 100,
+              stage: 'Complete',
+              status: 'completed',
+              outputFile: data.outputFile,
+              resultStats: {
+                forwarded: data.stats.metrics.forwarded,
+                dropped: data.stats.metrics.dropped,
+                total: data.stats.metrics.totalPackets,
+              },
+            }
+          : f
+      ));
+      toast.success(`Processing complete — ${data.stats.metrics.totalPackets} packets analyzed`);
+    };
+
+    socket.on('job:progress', onProgress);
+    socket.on('job:done', onDone);
+    return () => {
+      socket.off('job:progress', onProgress);
+      socket.off('job:done', onDone);
+    };
+  }, [socket]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -39,55 +82,50 @@ export default function Upload({ onUploadSuccess }: UploadProps) {
     e.target.value = '';
   };
 
-  const processFile = async (file: File) => {
+  const processFile = useCallback(async (file: File) => {
     const entry: FileEntry = {
       id: Date.now().toString(),
       name: file.name,
       size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
       progress: 0,
+      stage: 'Uploading…',
       status: 'uploading',
     };
 
     setFiles(prev => [entry, ...prev]);
 
-    // Animate progress bar
-    let prog = 0;
-    const ticker = setInterval(() => {
-      prog = Math.min(prog + Math.random() * 15, 85);
-      setFiles(prev => prev.map(f => f.id === entry.id ? { ...f, progress: Math.round(prog) } : f));
-    }, 300);
-
     try {
       const formData = new FormData();
       formData.append('pcapFile', file);
 
-      const res = await fetch('http://localhost:3001/api/upload', {
+      const res = await fetch('http://localhost:3001/api/v1/upload', {
         method: 'POST',
         body: formData,
       });
 
-      clearInterval(ticker);
-
       if (res.ok) {
         const data = await res.json();
+        const jobId = data.data?.jobId;
         setFiles(prev => prev.map(f =>
           f.id === entry.id
-            ? { ...f, progress: 100, status: 'completed', outputFile: data.outputFile }
+            ? { ...f, jobId, progress: 5, stage: 'Queued — waiting for engine…', status: 'processing' }
             : f
         ));
-        onUploadSuccess();
       } else {
+        const errData = await res.json().catch(() => null);
+        const msg = errData?.error?.message ?? 'Upload failed';
         setFiles(prev => prev.map(f =>
-          f.id === entry.id ? { ...f, progress: 100, status: 'error' } : f
+          f.id === entry.id ? { ...f, progress: 100, stage: msg, status: 'error' } : f
         ));
+        toast.error(msg);
       }
     } catch {
-      clearInterval(ticker);
       setFiles(prev => prev.map(f =>
-        f.id === entry.id ? { ...f, progress: 100, status: 'error' } : f
+        f.id === entry.id ? { ...f, progress: 100, stage: 'Network error', status: 'error' } : f
       ));
+      toast.error('Failed to connect to backend');
     }
-  };
+  }, []);
 
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(f => f.id !== id));
@@ -121,7 +159,7 @@ export default function Upload({ onUploadSuccess }: UploadProps) {
               className="sr-only"
               ref={fileInputRef}
               onChange={handleFileSelect}
-              accept=".pcap,.pcapng,.cap"
+              accept=".pcap,.pcapng"
             />
             <div className="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
               <CloudUpload className="w-8 h-8 text-primary-container" />
@@ -130,7 +168,7 @@ export default function Upload({ onUploadSuccess }: UploadProps) {
               {isDragging ? 'Drop it!' : 'Click or drag PCAP file here'}
             </p>
             <p className="text-sm text-on-surface-variant text-center max-w-md">
-              Supported formats: .pcap, .pcapng, .cap. Maximum file size: 500MB.
+              Supported formats: .pcap, .pcapng. Maximum file size: 100MB.
             </p>
             <div className="mt-8 flex items-center gap-4 w-full max-w-xs">
               <div className="h-px bg-outline-variant flex-1" />
@@ -162,16 +200,14 @@ export default function Upload({ onUploadSuccess }: UploadProps) {
                           file.status === 'error' ? "bg-error-container text-error" :
                           "bg-primary-fixed text-primary-container"
                         )}>
-                          {file.status === 'completed' ? <CheckCircle2 className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                          {file.status === 'completed' ? <CheckCircle2 className="w-5 h-5" /> :
+                           file.status === 'error' ? <AlertTriangle className="w-5 h-5" /> :
+                           <FileText className="w-5 h-5" />}
                         </div>
                         <div>
                           <p className="font-bold text-on-surface text-sm">{file.name}</p>
                           <p className="text-xs text-on-surface-variant">
-                            {file.size} • {
-                              file.status === 'completed' ? 'Processing Complete' :
-                              file.status === 'error' ? 'Processing Failed' :
-                              'Uploading & Processing...'
-                            }
+                            {file.size} • {file.stage}
                           </p>
                         </div>
                       </div>
@@ -186,28 +222,40 @@ export default function Upload({ onUploadSuccess }: UploadProps) {
                       </div>
                     </div>
 
+                    {/* Animated progress bar */}
                     <div className="w-full bg-surface-container h-1.5 rounded-full overflow-hidden">
                       <motion.div
                         className={cn("h-full rounded-full", file.status === 'error' ? "bg-error" : "bg-primary")}
                         initial={{ width: 0 }}
                         animate={{ width: `${file.progress}%` }}
+                        transition={{ type: 'spring', stiffness: 80, damping: 20 }}
                       />
                     </div>
 
-                    {file.status === 'completed' && file.outputFile && (
+                    {/* Completion: stats + download */}
+                    {file.status === 'completed' && (
                       <motion.div
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex gap-2 pt-1"
+                        className="flex flex-col gap-2 pt-1"
                       >
-                        <a
-                          href={`http://localhost:3001/api/download/${file.outputFile}`}
-                          download
-                          className="text-xs font-bold text-primary hover:underline flex items-center gap-1.5 bg-primary-fixed/30 px-3 py-1 rounded"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Download Filtered PCAP
-                        </a>
+                        {file.resultStats && (
+                          <div className="flex gap-4 text-xs font-bold">
+                            <span className="text-[#006644]">Forwarded: {file.resultStats.forwarded}</span>
+                            <span className="text-[#DE350B]">Dropped: {file.resultStats.dropped}</span>
+                            <span className="text-on-surface-variant">Total: {file.resultStats.total}</span>
+                          </div>
+                        )}
+                        {file.outputFile && (
+                          <a
+                            href={`http://localhost:3001/api/v1/download/${file.outputFile}`}
+                            download
+                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1.5 bg-primary-fixed/30 px-3 py-1 rounded w-fit"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download Filtered PCAP
+                          </a>
+                        )}
                       </motion.div>
                     )}
                   </motion.div>
