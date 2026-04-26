@@ -1,20 +1,71 @@
-# Executables
-*.exe
-*.out
+# ========================
+# Environment & Secrets
+# ========================
+.env
+.env.local
+.env.development
+.env.production
 
-# Object files
+# ========================
+# Backend - Node.js
+# ========================
+backend/node_modules/
+backend/logs/
+backend/*.log
+
+# ========================
+# Backend - SQLite Database
+# ========================
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# ========================
+# Backend - Uploads & Output
+# ========================
+backend/uploads/
+backend/output/
+
+# ========================
+# Frontend - Node.js
+# ========================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ========================
+# C++ Build Artifacts
+# ========================
 *.o
+*.obj
+*.exe
+build/
+cmake-build-debug/
+cmake-build-release/
+dpi-engine-extracted/
 
-# PCAP output files
-output*.pcap
+# ========================
+# PCAP Files (can be large)
+# ========================
+*.pcap
+*.pcapng
 
-# Build artifacts
-dpi_simple
-dpi_engine
-
-# OS files
+# ========================
+# OS Generated
+# ========================
 .DS_Store
 Thumbs.db
+desktop.ini
 
+# ========================
 # VS Code
-.vscode/
+# ========================
+.vscode/settings.json
+.vscode/launch.json
+
+# ========================
+# Logs (general)
+# ========================
+logs/
+*.log
+npm-debug.log*
