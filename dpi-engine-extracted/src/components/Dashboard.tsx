@@ -2,13 +2,8 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Filter, CheckCircle2, XCircle, Activity, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
-import type { AppStats } from '../App';
 
-interface DashboardProps {
-  stats: AppStats | null;
-}
-
-const FALLBACK_BAR = [
+const barData = [
   { name: 'HTTPS', value: 28 },
   { name: 'DNS', value: 19 },
   { name: 'HTTP', value: 14 },
@@ -17,7 +12,7 @@ const FALLBACK_BAR = [
   { name: 'Cloudflare', value: 2 },
 ];
 
-const FALLBACK_PIE = [
+const pieData = [
   { name: 'HTTPS', value: 36, color: '#0052CC' },
   { name: 'DNS', value: 25, color: '#4C9AFF' },
   { name: 'HTTP', value: 18, color: '#00B8D9' },
@@ -25,67 +20,29 @@ const FALLBACK_PIE = [
   { name: 'Other', value: 9, color: '#6554C0' },
 ];
 
-const COLORS = ['#0052CC', '#4C9AFF', '#00B8D9', '#172B4D', '#6554C0', '#36B37E', '#FF5630'];
-
-function formatNum(n: number): string {
-  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + 'B';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return n.toString();
-}
-
-export default function Dashboard({ stats }: DashboardProps) {
-  const hasData = stats && stats.metrics.totalPackets > 0;
-
-  const metricValues = hasData
-    ? {
-        total: formatNum(stats!.metrics.totalPackets),
-        forwarded: formatNum(stats!.metrics.forwarded),
-        dropped: formatNum(stats!.metrics.dropped),
-        flows: formatNum(stats!.metrics.activeFlows),
-      }
-    : { total: '—', forwarded: '—', dropped: '—', flows: '—' };
-
-  const statCards = [
-    { label: 'Total Packets', value: metricValues.total, icon: Filter, color: 'bg-surface-container-high', iconColor: 'text-primary' },
-    { label: 'Forwarded Packets', value: metricValues.forwarded, icon: CheckCircle2, color: 'bg-[#E3FCEF]', iconColor: 'text-[#006644]' },
-    { label: 'Dropped Packets', value: metricValues.dropped, icon: XCircle, color: 'bg-[#FFEBE6]', iconColor: 'text-[#DE350B]' },
-    { label: 'Active Flows', value: metricValues.flows, icon: Activity, color: 'bg-[#EAE6FF]', iconColor: 'text-[#403294]' },
+export default function Dashboard() {
+  const stats = [
+    { label: 'Total Packets', value: '1.24B', icon: Filter, color: 'bg-surface-container-high', iconColor: 'text-primary' },
+    { label: 'Forwarded Packets', value: '1.18B', icon: CheckCircle2, color: 'bg-[#E3FCEF]', iconColor: 'text-[#006644]' },
+    { label: 'Dropped Packets', value: '24.5M', icon: XCircle, color: 'bg-[#FFEBE6]', iconColor: 'text-[#DE350B]' },
+    { label: 'Active Flows', value: '342K', icon: Activity, color: 'bg-[#EAE6FF]', iconColor: 'text-[#403294]' },
   ];
-
-  const barData = hasData
-    ? stats!.apps.map(a => ({ name: a.name, value: a.count }))
-    : FALLBACK_BAR;
-
-  const pieData = hasData
-    ? stats!.apps.filter(a => a.count > 0).map((a, i) => ({
-        name: a.name,
-        value: a.count,
-        color: COLORS[i % COLORS.length],
-      }))
-    : FALLBACK_PIE;
-
-  const pieTotal = hasData ? stats!.metrics.totalPackets : 77;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-display text-on-surface">Network Overview</h2>
-          <p className="text-sm text-on-surface-variant mt-1">
-            {hasData ? 'Live traffic analysis from last processed PCAP.' : 'Upload a PCAP file to see real data.'}
-          </p>
+          <p className="text-sm text-on-surface-variant font-body-md mt-1">Live traffic analysis and deep packet inspection.</p>
         </div>
         <div className="flex items-center gap-2 bg-white border border-outline-variant rounded-lg px-3 py-1.5 shadow-sm">
-           <div className={`w-2 h-2 rounded-full ${hasData ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
-           <span className="text-xs font-bold uppercase tracking-wider text-on-surface">
-             {hasData ? 'Data Ready' : 'No Data'}
-           </span>
+           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+           <span className="text-xs font-bold uppercase tracking-wider text-on-surface">Live</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat, i) => (
+        {stats.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
@@ -94,7 +51,7 @@ export default function Dashboard({ stats }: DashboardProps) {
             className="bg-white rounded-xl border border-outline-variant p-5 shadow-sm flex items-start gap-4"
           >
             <div className={`w-10 h-10 rounded-full ${stat.color} flex items-center justify-center ${stat.iconColor} shrink-0`}>
-              <stat.icon className="w-5 h-5" />
+              <stat.icon className="w-5 h-5 fill-current/20" />
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">{stat.label}</p>
@@ -112,7 +69,7 @@ export default function Dashboard({ stats }: DashboardProps) {
         >
           <div className="flex justify-between items-center mb-8">
             <h3 className="font-bold font-display text-on-surface">Traffic Breakdown (Packets)</h3>
-            <button className="text-primary text-sm font-semibold hover:underline flex items-center gap-1 group">
+            <button className="text-primary-container text-sm font-semibold hover:underline flex items-center gap-1 group">
               View Details
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
@@ -138,9 +95,12 @@ export default function Dashboard({ stats }: DashboardProps) {
                   cursor={{ fill: '#f3f3fd' }}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #c3c6d6', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
                 />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <Bar 
+                  dataKey="value" 
+                  radius={[4, 4, 0, 0]}
+                >
                   {barData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={index < 3 ? '#0052CC' : '#172B4D'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -176,7 +136,7 @@ export default function Dashboard({ stats }: DashboardProps) {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl font-bold text-on-surface">{formatNum(pieTotal)}</span>
+                <span className="text-2xl font-bold text-on-surface">77</span>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Total</span>
               </div>
             </div>
@@ -186,7 +146,7 @@ export default function Dashboard({ stats }: DashboardProps) {
                 <div key={item.name} className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                   <span className="text-xs font-medium text-on-surface-variant truncate whitespace-nowrap">
-                    {item.name} ({item.value}{hasData ? '' : '%'})
+                    {item.name} ({item.value}%)
                   </span>
                 </div>
               ))}

@@ -1,5 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import Sidebar, { type Page } from './components/Sidebar';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from 'react';
+import Sidebar, { Page } from './components/Sidebar';
 import TopNav from './components/TopNav';
 import Dashboard from './components/Dashboard';
 import Upload from './components/Upload';
@@ -8,40 +13,18 @@ import Logs from './components/Logs';
 import BottomNav from './components/BottomNav';
 import { motion, AnimatePresence } from 'motion/react';
 
-export type AppStats = {
-  metrics: {
-    totalPackets: number;
-    forwarded: number;
-    dropped: number;
-    activeFlows: number;
-  };
-  apps: { name: string; count: number; percentage: number; isBlocked: boolean }[];
-  domains: { domain: string; app: string }[];
-};
-
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
-  const [stats, setStats] = useState<AppStats | null>(null);
 
-  const fetchStats = async () => {
-    try {
-      const res = await fetch('http://localhost:3001/api/stats');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.metrics && data.metrics.totalPackets > 0) {
-          setStats(data);
-        }
-      }
-    } catch {
-      // Backend not running — no-op, stays null
+  const renderPage = () => {
+    switch (activePage) {
+      case 'dashboard': return <Dashboard />;
+      case 'upload': return <Upload />;
+      case 'rules': return <Rules />;
+      case 'logs': return <Logs />;
+      default: return <Dashboard />;
     }
   };
-
-  useEffect(() => {
-    fetchStats();
-    const interval = setInterval(fetchStats, 10000);
-    return () => clearInterval(interval);
-  }, []);
 
   const getPageTitle = () => {
     switch (activePage) {
@@ -70,10 +53,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
               >
-                {activePage === 'dashboard' && <Dashboard stats={stats} />}
-                {activePage === 'upload' && <Upload onUploadSuccess={fetchStats} />}
-                {activePage === 'rules' && <Rules />}
-                {activePage === 'logs' && <Logs stats={stats} />}
+                {renderPage()}
               </motion.div>
             </AnimatePresence>
           </div>
