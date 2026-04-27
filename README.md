@@ -168,8 +168,9 @@ packet_analyzer/
 │   ├── dpi_mt.cpp             # ★ MULTI-THREADED VERSION ★
 │   └── [other files]          # Supporting code
 │
+├── pcaps/                      # Directory for captured PCAP files
+│   └── test_dpi.pcap          # Sample capture with various traffic
 ├── generate_test_pcap.py      # Creates test data
-├── test_dpi.pcap              # Sample capture with various traffic
 └── README.md                  # This file!
 ```
 

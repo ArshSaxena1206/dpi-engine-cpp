@@ -138,7 +138,9 @@ def create_dns_query(domain):
 
 
 def main():
-    writer = PCAPWriter('test_dpi.pcap')
+    import os
+    os.makedirs('pcaps', exist_ok=True)
+    writer = PCAPWriter('pcaps/test_dpi.pcap')
     
     # Source: User's machine
     user_mac = '00:11:22:33:44:55'

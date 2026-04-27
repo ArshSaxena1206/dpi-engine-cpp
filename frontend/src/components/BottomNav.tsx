@@ -1,4 +1,3 @@
-import React from 'react';
 import { LayoutDashboard, CloudUpload, Gavel, List } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import type { Page } from './Sidebar';

@@ -1,6 +1,0 @@
-{
-  "name": "DPI Engine",
-  "description": "Deep Packet Inspection and Network Monitoring Dashboard with real-time traffic analysis, pcap processing, and rule management.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
-}

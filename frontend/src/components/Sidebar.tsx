@@ -1,8 +1,7 @@
-import React from 'react';
 import { LayoutDashboard, CloudUpload, Gavel, List, Shield, HelpCircle, ShieldCheck as Verified } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 
-export const PAGES = ['dashboard', 'upload', 'rules', 'logs'] as const;
+const PAGES = ['dashboard', 'upload', 'rules', 'logs'] as const;
 export type Page = typeof PAGES[number];
 
 interface SidebarProps {
