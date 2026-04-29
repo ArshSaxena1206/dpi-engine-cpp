@@ -1,12 +1,14 @@
 import { Search, Bell, Settings, HelpCircle, Menu, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import type { ConnectionStatus } from '../hooks/useSocket';
 
 interface TopNavProps {
   title: string;
   connectionStatus: ConnectionStatus;
+  onPageChange: (page: any) => void;
 }
 
-export default function TopNav({ title, connectionStatus }: TopNavProps) {
+export default function TopNav({ title, connectionStatus, onPageChange }: TopNavProps) {
   const statusConfig = {
     connected:    { dot: 'bg-[#36B37E]', label: 'Live',          animate: 'animate-pulse' },
     disconnected: { dot: 'bg-[#DE350B]', label: 'Disconnected',  animate: '' },
@@ -45,20 +47,20 @@ export default function TopNav({ title, connectionStatus }: TopNavProps) {
         </div>
 
         <div className="flex items-center gap-1 border-l border-outline-variant pl-4">
-          <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#F4F5F7] transition-colors text-[#42526E]">
+          <button onClick={() => onPageChange('notifications')} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#F4F5F7] transition-colors text-[#42526E]">
             <Bell className="w-5 h-5" />
           </button>
-          <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#F4F5F7] transition-colors text-[#42526E]">
+          <button onClick={() => onPageChange('settings')} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#F4F5F7] transition-colors text-[#42526E]">
             <Settings className="w-5 h-5" />
           </button>
-          <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#F4F5F7] transition-colors text-[#42526E]">
+          <button onClick={() => onPageChange('help')} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#F4F5F7] transition-colors text-[#42526E]">
             <HelpCircle className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="w-8 h-8 rounded-full bg-secondary-container overflow-hidden border border-outline-variant ml-2 flex items-center justify-center text-xs font-bold text-on-secondary-container">
+        <button onClick={() => onPageChange('profile')} className="w-8 h-8 rounded-full bg-secondary-container overflow-hidden border border-outline-variant ml-2 flex items-center justify-center text-xs font-bold text-on-secondary-container hover:opacity-80 transition-opacity">
           AD
-        </div>
+        </button>
       </div>
     </header>
   );

@@ -7,6 +7,7 @@ import type { Socket } from 'socket.io-client';
 
 interface UploadProps {
   socket: Socket;
+  onPageChange: (page: 'dashboard' | 'upload' | 'rules' | 'logs') => void;
 }
 
 type FileEntry = {
@@ -21,7 +22,7 @@ type FileEntry = {
   resultStats?: { forwarded: number; dropped: number; total: number };
 };
 
-export default function Upload({ socket }: UploadProps) {
+export default function Upload({ socket, onPageChange }: UploadProps) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -271,6 +272,7 @@ export default function Upload({ socket }: UploadProps) {
           </p>
           <button
             disabled={!hasCompleted}
+            onClick={() => onPageChange('dashboard')}
             className="px-8 py-2.5 bg-primary text-white rounded font-bold hover:bg-primary-container transition-all shadow-md flex items-center gap-2 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Cpu className="w-4 h-4 text-on-primary/70" />

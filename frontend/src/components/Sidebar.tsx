@@ -1,7 +1,8 @@
 import { LayoutDashboard, CloudUpload, Gavel, List, Shield, HelpCircle, ShieldCheck as Verified } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
+import toast from 'react-hot-toast';
 
-export type Page = 'dashboard' | 'upload' | 'rules' | 'logs';
+export type Page = 'dashboard' | 'upload' | 'rules' | 'logs' | 'settings' | 'profile' | 'notifications' | 'help' | 'security';
 
 interface SidebarProps {
   activePage: Page;
@@ -17,8 +18,8 @@ export default function Sidebar({ activePage, onPageChange }: SidebarProps) {
   ];
 
   const bottomItems = [
-    { label: 'Security Status', icon: Verified },
-    { label: 'Support', icon: HelpCircle },
+    { id: 'security', label: 'Security Status', icon: Verified },
+    { id: 'help', label: 'Support', icon: HelpCircle },
   ];
 
   return (
@@ -66,7 +67,10 @@ export default function Sidebar({ activePage, onPageChange }: SidebarProps) {
             const Icon = item.icon;
             return (
               <li key={item.label}>
-                <button className="w-full flex items-center gap-3 px-4 py-2 cursor-pointer text-[#97A0AF] hover:text-white hover:bg-[#172B4D] rounded transition-all duration-200">
+                <button 
+                  onClick={() => onPageChange(item.id as Page)}
+                  className="w-full flex items-center gap-3 px-4 py-2 cursor-pointer text-[#97A0AF] hover:text-white hover:bg-[#172B4D] rounded transition-all duration-200"
+                >
                   <Icon className="w-4 h-4" />
                   <span className="text-xs font-semibold uppercase tracking-wider">{item.label}</span>
                 </button>

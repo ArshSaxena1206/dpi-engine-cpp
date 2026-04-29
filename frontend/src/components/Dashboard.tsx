@@ -6,6 +6,7 @@ import type { AppStats } from '../hooks/useSocket';
 
 interface DashboardProps {
   stats: AppStats | null;
+  onPageChange?: (page: 'dashboard' | 'upload' | 'rules' | 'logs') => void;
 }
 
 const FALLBACK_BAR = [
@@ -48,7 +49,7 @@ interface HistoryRow {
   total: number;
 }
 
-export default function Dashboard({ stats }: DashboardProps) {
+export default function Dashboard({ stats, onPageChange }: DashboardProps) {
   const hasData = stats && stats.metrics.totalPackets > 0;
   const [activeRange, setActiveRange] = useState(0);
   const [history, setHistory] = useState<HistoryRow[]>([]);
@@ -249,7 +250,10 @@ export default function Dashboard({ stats }: DashboardProps) {
         >
           <div className="flex justify-between items-center mb-8">
             <h3 className="font-bold font-display text-on-surface">Traffic Breakdown (Packets)</h3>
-            <button className="text-primary text-sm font-semibold hover:underline flex items-center gap-1 group">
+            <button 
+              onClick={() => onPageChange?.('logs')}
+              className="text-primary text-sm font-semibold hover:underline flex items-center gap-1 group"
+            >
               View Details
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
@@ -288,20 +292,20 @@ export default function Dashboard({ stats }: DashboardProps) {
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-xl border border-outline-variant p-6 shadow-sm flex flex-col h-[450px]"
+          className="bg-white rounded-xl border border-outline-variant p-6 shadow-sm flex flex-col h-[450px] overflow-hidden"
         >
-          <h3 className="font-bold font-display text-on-surface mb-8">Application Distribution</h3>
+          <h3 className="font-bold font-display text-on-surface mb-4 shrink-0">Application Distribution</h3>
           
-          <div className="flex-1 flex flex-col items-center justify-center">
-            <div className="relative w-full h-[240px]">
+          <div className="flex-1 flex flex-col items-center min-h-0">
+            <div className="relative w-full h-[200px] shrink-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={pieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
+                    innerRadius={55}
+                    outerRadius={85}
                     paddingAngle={2}
                     dataKey="value"
                   >
@@ -318,15 +322,17 @@ export default function Dashboard({ stats }: DashboardProps) {
               </div>
             </div>
 
-            <div className="w-full mt-6 grid grid-cols-2 gap-y-3 gap-x-4">
-              {pieData.map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                  <span className="text-xs font-medium text-on-surface-variant truncate whitespace-nowrap">
-                    {item.name} ({item.value}{hasData ? '' : '%'})
-                  </span>
-                </div>
-              ))}
+            <div className="w-full mt-4 flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-y-2 gap-x-3">
+                {pieData.map((item) => (
+                  <div key={item.name} className="flex items-center gap-2 min-w-0">
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                    <span className="text-[11px] font-medium text-on-surface-variant truncate">
+                      {item.name} ({item.value}{hasData ? '' : '%'})
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </motion.div>
