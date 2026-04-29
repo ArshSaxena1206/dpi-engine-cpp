@@ -68,4 +68,7 @@ desktop.ini
 # ========================
 logs/
 *.log
-npm-debug.log*
+# ========================
+# Graphify
+# ========================
+graphify-out/
