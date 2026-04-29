@@ -405,6 +405,27 @@ bool DPIEngine::saveRules(const std::string& filename) {
 // Reporting
 // ============================================================================
 
+/**
+ * @brief Generates a comprehensive summary report of the DPI engine's execution.
+ * 
+ * 1. What it does:
+ *    Compiles packet statistics, filtering metrics (dropped/forwarded), thread performance, 
+ *    and application breakdown into a formatted ASCII table string.
+ * 
+ * 2. Which modules depend on it:
+ *    - Community 1 (DPI Engine Core): Calls this at the end of processFile().
+ *    - Community 2 (Server/Backend): The stdout output of this function is parsed by the Node.js backend.
+ * 
+ * 3. What breaks if it changes:
+ *    - The Node.js regex parsers in `packetJob.js` rely on EXACT string formats like "Total Packets: " 
+ *      and "Dropped: ". Changing the output format will break the frontend dashboard metrics.
+ * 
+ * 4. Known edge cases:
+ *    - Zero total packets will cause divide-by-zero if drop_rate calculation isn't guarded.
+ *    - Extremely long AppType names may misalign the ASCII table borders.
+ * 
+ * @return std::string Formatted report suitable for stdout.
+ */
 std::string DPIEngine::generateReport() const {
     std::ostringstream ss;
     
@@ -461,6 +482,26 @@ std::string DPIEngine::generateReport() const {
     return ss.str();
 }
 
+/**
+ * @brief Generates a report specifically detailing traffic classification results.
+ * 
+ * 1. What it does:
+ *    Fetches classification stats from the Fast Path Manager and outputs detected applications 
+ *    and Server Name Indications (SNIs).
+ * 
+ * 2. Which modules depend on it:
+ *    - Community 1 (DPI Engine Core): Calls this at the end of processFile() alongside generateReport().
+ *    - Community 3 (Frontend/Backend): Used for populating the "Detected Domains/SNIs" section of the results.
+ * 
+ * 3. What breaks if it changes:
+ *    - The Node.js `packetJob.js` parser looks for the specific `[Detected Domains/SNIs]` header 
+ *      and the `->` separator. Changing this breaks domain tracking in the UI.
+ * 
+ * 4. Known edge cases:
+ *    - Can produce an empty string if the FP manager isn't initialized or no flows were classified.
+ * 
+ * @return std::string Formatted classification report.
+ */
 std::string DPIEngine::generateClassificationReport() const {
     if (fp_manager_) {
         return fp_manager_->generateClassificationReport();

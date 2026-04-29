@@ -134,6 +134,21 @@ TLS Client Hello:
                     └─────────────┘
 ```
 
+### Full-Stack Architecture & Data Flow
+
+The project consists of three distinct layers that handle file processing:
+
+1. **Frontend (`frontend/src/components/Upload.tsx`)**: The user interface allows drag-and-drop or file selection. The React frontend **does not** communicate directly with the C++ engine. Instead, it uploads the PCAP file via a `POST /api/v1/upload` request to the backend API.
+2. **Backend (`backend/server.js`)**: The Node.js/Express server receives the file, queues it using Bull (Redis), and then spawns the C++ DPI engine (`dpi_engine.exe`) as a child process. It monitors the output of the engine and emits real-time progress via WebSocket (`socket.io`) back to the frontend.
+3. **C++ Engine (`dpi_engine.exe`)**: This is the core workhorse. It is invoked with the file paths and blocking rules (e.g., `--block-app YouTube`). It performs the actual binary analysis, drops packets matching the rules, writes the filtered packets to a new PCAP file, and prints a final statistics report to `stdout`.
+
+```
+[Upload.tsx]  ──(HTTP POST)──►  [server.js]  ──(spawn child process)──►  [dpi_engine.exe]
+      ▲                              │                                           │
+      │                              ▼                                           │
+      └──────(WebSocket Events)──────┴──────────(Reads stdout)───────────────────┘
+```
+
 ### Two Versions
 
 | Version | File | Use Case |

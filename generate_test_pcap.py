@@ -77,7 +77,24 @@ def create_udp_header(src_port, dst_port, payload_len):
 
 
 def create_tls_client_hello(sni):
-    """Create a TLS Client Hello with SNI extension."""
+    """
+    Create a TLS Client Hello packet containing a Server Name Indication (SNI) extension.
+    
+    What is SNI?
+    Server Name Indication (SNI) is an extension to the TLS protocol that indicates
+    which hostname the client is attempting to connect to at the start of the handshaking process.
+    
+    Why is it used?
+    It allows a server to present multiple certificates on the same IP address and TCP port,
+    enabling multiple secure websites to be served off the same IP without requiring
+    all sites to use the same certificate.
+    
+    How it ties into the DPI pipeline:
+    Since the SNI is transmitted in plaintext during the initial Client Hello message
+    (before the encrypted channel is established), the DPI engine can inspect this packet,
+    extract the domain name (e.g., "www.youtube.com"), and use it to classify the application
+    or apply domain-based blocking rules.
+    """
     
     # SNI extension
     sni_bytes = sni.encode('ascii')

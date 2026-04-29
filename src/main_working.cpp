@@ -26,6 +26,19 @@ struct Flow {
 };
 
 // Blocking rules
+/**
+ * @class BlockingRules
+ * @brief Manages simple traffic filtering rules for the DPI engine.
+ *
+ * This class maintains sets of blocked IPs, applications, and domains.
+ * Rules are loaded typically via command-line arguments (e.g., --block-ip, --block-app)
+ * and stored in memory. The `isBlocked()` method is then evaluated for each packet flow
+ * to determine whether to drop or forward the packets.
+ *
+ * @var BlockingRules::blocked_ips Set of IPv4 addresses stored as uint32_t.
+ * @var BlockingRules::blocked_apps Set of known AppType enum values to drop.
+ * @var BlockingRules::blocked_domains List of domain substrings to match against SNI.
+ */
 class BlockingRules {
 public:
     std::unordered_set<uint32_t> blocked_ips;

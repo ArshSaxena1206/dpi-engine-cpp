@@ -10,6 +10,7 @@ set(SOURCES
     src/main.cpp
     src/pcap_reader.cpp
     src/packet_parser.cpp
+    src/utils/appTypeUtils.cpp
 )
 
 # Header files location

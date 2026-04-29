@@ -85,6 +85,25 @@ function SortableRule({ rule, onDelete, onToggle }: { rule: Rule; onDelete: (id:
   );
 }
 
+/**
+ * Rules Component
+ * 
+ * Manages the DPI filtering policies across applications and domains.
+ * This component provides a UI for users to create, read, update, and delete (CRUD) 
+ * traffic rules. It supports sorting via drag-and-drop and allows importing/exporting 
+ * rule sets as JSON.
+ * 
+ * Data Flow:
+ * - Fetches initial rules from `GET /api/v1/rules`
+ * - Creates new rules via `POST /api/v1/rules`
+ * - Updates rule state (e.g., enabled/disabled) via `PUT /api/v1/rules/:id`
+ * - Deletes rules via `DELETE /api/v1/rules/:id`
+ * 
+ * The backend persists these rules in SQLite and applies them to the C++ DPI engine 
+ * as command-line arguments when processing PCAP files.
+ * 
+ * @returns {JSX.Element} The rendered Rules management interface.
+ */
 export default function Rules() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);

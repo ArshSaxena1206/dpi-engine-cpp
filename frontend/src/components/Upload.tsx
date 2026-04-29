@@ -1,9 +1,21 @@
+/**
+ * DATA FLOW ARCHITECTURE:
+ * 
+ * Upload.tsx → POST /api/v1/upload → server.js → dpi_engine.exe
+ * 
+ * NOTE: The frontend never communicates directly with the C++ DPI engine. 
+ * `handleDrop()` and `handleFileSelect()` call `processFile()`, which sends 
+ * the file to the Node.js backend via a standard HTTP POST request. 
+ * The backend then spawns the C++ engine as a separate process and manages 
+ * the job queue.
+ */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CloudUpload, FileText, X, CheckCircle2, Download, Cpu, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import toast from 'react-hot-toast';
 import type { Socket } from 'socket.io-client';
+import { uploadPcap, downloadResult } from '../services/uploadService';
 
 interface UploadProps {
   socket: Socket;
@@ -96,35 +108,19 @@ export default function Upload({ socket, onPageChange }: UploadProps) {
     setFiles(prev => [entry, ...prev]);
 
     try {
-      const formData = new FormData();
-      formData.append('pcapFile', file);
-
-      const res = await fetch('http://localhost:3001/api/v1/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const jobId = data.data?.jobId;
-        setFiles(prev => prev.map(f =>
-          f.id === entry.id
-            ? { ...f, jobId, progress: 5, stage: 'Queued — waiting for engine…', status: 'processing' }
-            : f
-        ));
-      } else {
-        const errData = await res.json().catch(() => null);
-        const msg = errData?.error?.message ?? 'Upload failed';
-        setFiles(prev => prev.map(f =>
-          f.id === entry.id ? { ...f, progress: 100, stage: msg, status: 'error' } : f
-        ));
-        toast.error(msg);
-      }
-    } catch {
+      const data = await uploadPcap(file);
+      const jobId = data.data?.jobId;
       setFiles(prev => prev.map(f =>
-        f.id === entry.id ? { ...f, progress: 100, stage: 'Network error', status: 'error' } : f
+        f.id === entry.id
+          ? { ...f, jobId, progress: 5, stage: 'Queued — waiting for engine…', status: 'processing' }
+          : f
       ));
-      toast.error('Failed to connect to backend');
+    } catch (err: any) {
+      const msg = err.message ?? 'Upload failed';
+      setFiles(prev => prev.map(f =>
+        f.id === entry.id ? { ...f, progress: 100, stage: msg, status: 'error' } : f
+      ));
+      toast.error(msg);
     }
   }, []);
 
@@ -248,14 +244,13 @@ export default function Upload({ socket, onPageChange }: UploadProps) {
                           </div>
                         )}
                         {file.outputFile && (
-                          <a
-                            href={`http://localhost:3001/api/v1/download/${file.outputFile}`}
-                            download
+                          <button
+                            onClick={() => downloadResult(file.outputFile!)}
                             className="text-xs font-bold text-primary hover:underline flex items-center gap-1.5 bg-primary-fixed/30 px-3 py-1 rounded w-fit"
                           >
                             <Download className="w-3.5 h-3.5" />
                             Download Filtered PCAP
-                          </a>
+                          </button>
                         )}
                       </motion.div>
                     )}

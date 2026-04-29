@@ -20,6 +20,7 @@ const winston      = require('winston');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi    = require('swagger-ui-express');
 const { stmts, formatRule } = require('./db');
+const { createPacketJob, handleOutput, generateReport } = require('./jobs/packetJob');
 
 // ─── Winston Logger ──────────────────────────────────────────────────────────
 const logsDir = path.join(__dirname, 'logs');
@@ -194,62 +195,7 @@ let latestStats = {
   domains: [],
 };
 
-// ─── Parse dpi_engine.exe stdout (preserved from v1) ─────────────────────────
-function parseEngineOutput(output) {
-  const stats = {
-    metrics: { totalPackets: 0, forwarded: 0, dropped: 0, activeFlows: 0 },
-    apps: [],
-    domains: [],
-  };
-
-  const lines = output.split('\n');
-  let inAppBreakdown = false;
-  let inDomains = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-
-    if (line.includes('Total Packets:')) {
-      const m = line.match(/Total Packets:\s+(\d+)/);
-      if (m) stats.metrics.totalPackets = parseInt(m[1], 10);
-    } else if (line.includes('Forwarded:')) {
-      const m = line.match(/Forwarded:\s+(\d+)/);
-      if (m) stats.metrics.forwarded = parseInt(m[1], 10);
-    } else if (line.includes('Dropped:')) {
-      const m = line.match(/Dropped:\s+(\d+)/);
-      if (m) stats.metrics.dropped = parseInt(m[1], 10);
-    } else if (line.includes('Active Flows:')) {
-      const m = line.match(/Active Flows:\s+(\d+)/);
-      if (m) stats.metrics.activeFlows = parseInt(m[1], 10);
-    }
-
-    if (line.includes('APPLICATION BREAKDOWN')) { inAppBreakdown = true; continue; }
-    if (inAppBreakdown && line.includes('╚')) { inAppBreakdown = false; continue; }
-    if (inAppBreakdown && line.startsWith('║') && !line.includes('╠') && !line.includes('╚') && !line.includes('APPLICATION BREAKDOWN')) {
-      const content = line.replace(/║/g, '').trim();
-      if (content.length > 0) {
-        const parts = content.split(/\s+/);
-        if (parts.length >= 3 && !isNaN(parseInt(parts[1]))) {
-          stats.apps.push({
-            name:       parts[0],
-            count:      parseInt(parts[1], 10),
-            percentage: parseFloat(parts[2].replace('%', '')),
-            isBlocked:  content.includes('(BLOCKED)'),
-          });
-        }
-      }
-    }
-
-    if (line.includes('[Detected Domains/SNIs]') || line.includes('[Detected Applications/Domains]')) { inDomains = true; continue; }
-    if (inDomains && line.startsWith('-')) {
-      const parts = line.replace('-', '').split('->');
-      if (parts.length === 2) {
-        stats.domains.push({ domain: parts[0].trim(), app: parts[1].trim() });
-      }
-    }
-  }
-  return stats;
-}
+// ─── Extracted logic to backend/jobs/packetJob.js ─────────────────────────
 
 // ─── Bull Queue Processor ────────────────────────────────────────────────────
 pcapQueue.process(async (job) => {
@@ -285,7 +231,8 @@ pcapQueue.process(async (job) => {
 
       io.emit('job:progress', { jobId: job.id, progress: 80, stage: 'Parsing results' });
 
-      const parsed = parseEngineOutput(stdout);
+      const parsed = handleOutput(stdout);
+      generateReport(parsed);
       parsed.rawOutput = stdout;
       latestStats = parsed;
 
@@ -502,6 +449,18 @@ router.get('/stats/history', (req, res) => {
 // ──────────────── Upload (PCAP Processing) ───────────────────────────────────
 
 /**
+ * DATA FLOW ARCHITECTURE:
+ * 
+ * [Frontend (Upload.tsx)]
+ *           │
+ *           ▼ POST /api/v1/upload
+ *           │
+ * [Backend (server.js - Express)]
+ *           │
+ *           ▼ spawn process
+ *           │
+ * [C++ Engine (dpi_engine.exe)]
+ * 
  * @swagger
  * /api/v1/upload:
  *   post:
@@ -536,12 +495,13 @@ router.post('/upload', uploadLimiter, upload.single('pcapFile'), async (req, res
     const outputFilename = `filtered_${Date.now()}_${safeName}`;
     const outputPath = path.join(__dirname, 'output', outputFilename);
 
-    const job = await pcapQueue.add({
-      inputPath:      req.file.path,
+    const job = await createPacketJob(
+      pcapQueue,
+      req.file.path,
       outputPath,
       outputFilename,
-      originalName:   safeName,
-    });
+      safeName
+    );
 
     logger.info('PCAP upload queued', { jobId: job.id, originalName: safeName });
 
