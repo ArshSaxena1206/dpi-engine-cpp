@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Generate from '../components/Generate';
 
@@ -34,10 +34,14 @@ vi.mock('react-hot-toast', () => ({
 // ─── Mock motion/react (simplify animations for testing) ─────────────────────
 vi.mock('motion/react', () => ({
   motion: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     div: ({ children, ...props }: any) => <div {...filterDomProps(props)}>{children}</div>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     span: ({ children, ...props }: any) => <span {...filterDomProps(props)}>{children}</span>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     p: ({ children, ...props }: any) => <p {...filterDomProps(props)}>{children}</p>,
   },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }));
 
@@ -55,14 +59,16 @@ function filterDomProps(props: Record<string, unknown>) {
 }
 
 // ─── Socket Mock Factory ──────────────────────────────────────────────────────
+type MockListener = (...args: unknown[]) => void;
+
 function createMockSocket() {
-  const listeners: Record<string, Function[]> = {};
+  const listeners: Record<string, MockListener[]> = {};
   return {
-    on: vi.fn((event: string, cb: Function) => {
+    on: vi.fn((event: string, cb: MockListener) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     }),
-    off: vi.fn((event: string, cb: Function) => {
+    off: vi.fn((event: string, cb: MockListener) => {
       if (listeners[event]) {
         listeners[event] = listeners[event].filter(fn => fn !== cb);
       }
@@ -84,6 +90,7 @@ const mockOnPageChange = vi.fn();
 
 function renderGenerate(socketOverride?: ReturnType<typeof createMockSocket>) {
   const socket = socketOverride || createMockSocket();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render(<Generate socket={socket as any} onPageChange={mockOnPageChange} />);
   return socket;
 }
@@ -274,7 +281,7 @@ describe('State Transition Tests', () => {
   test('19. on job:done: component transitions to complete state', async () => {
     mockGeneratePcap.mockResolvedValue({ jobId: 'gen_123', filename: 'test.pcap' });
     const socket = createMockSocket();
-    render(<Generate socket={socket as any} onPageChange={mockOnPageChange} />);
+    render(<Generate socket={socket as unknown} onPageChange={mockOnPageChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Generate & Analyze/i }));
 
@@ -297,7 +304,7 @@ describe('State Transition Tests', () => {
   test('20. complete state shows forwarded/dropped/total', async () => {
     mockGeneratePcap.mockResolvedValue({ jobId: 'gen_123', filename: 'test.pcap' });
     const socket = createMockSocket();
-    render(<Generate socket={socket as any} onPageChange={mockOnPageChange} />);
+    render(<Generate socket={socket as unknown} onPageChange={mockOnPageChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Generate & Analyze/i }));
 
@@ -317,7 +324,7 @@ describe('State Transition Tests', () => {
   test('21. complete state shows Download button', async () => {
     mockGeneratePcap.mockResolvedValue({ jobId: 'gen_123', filename: 'test.pcap' });
     const socket = createMockSocket();
-    render(<Generate socket={socket as any} onPageChange={mockOnPageChange} />);
+    render(<Generate socket={socket as unknown} onPageChange={mockOnPageChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Generate & Analyze/i }));
     await waitFor(() => expect(mockGeneratePcap).toHaveBeenCalled());
@@ -336,7 +343,7 @@ describe('State Transition Tests', () => {
   test('22. clicking "Generate Another" resets to idle', async () => {
     mockGeneratePcap.mockResolvedValue({ jobId: 'gen_123', filename: 'test.pcap' });
     const socket = createMockSocket();
-    render(<Generate socket={socket as any} onPageChange={mockOnPageChange} />);
+    render(<Generate socket={socket as unknown} onPageChange={mockOnPageChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Generate & Analyze/i }));
     await waitFor(() => expect(mockGeneratePcap).toHaveBeenCalled());

@@ -59,13 +59,13 @@ const logger = winston.createLogger({
 const app    = express();
 const server = http.createServer(app);
 const io     = new SocketServer(server, {
-  cors: { origin: 'http://localhost:5174', methods: ['GET', 'POST'] },
+  cors: { origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'], methods: ['GET', 'POST'] },
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // ─── Global Middleware ───────────────────────────────────────────────────────
-app.use(cors({ origin: 'http://localhost:5174' }));
+app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'] }));
 app.use(express.json());
 
 // ─── Multer (file filter + size limit) ───────────────────────────────────────
@@ -649,6 +649,13 @@ router.post('/generate', generateLimiter, validate(generateSchema), (req, res, n
   const { spawn } = require('child_process');
   const pyProcess = spawn(pythonCmd, args);
 
+  pyProcess.on('error', (err) => {
+    logger.error('Failed to start python process', { error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: { code: 'GENERATION_FAILED', message: 'Failed to start generator', details: err.message } });
+    }
+  });
+
   let stderr = '';
   pyProcess.stderr.on('data', (data) => {
     stderr += data.toString();
@@ -729,7 +736,7 @@ app.use((err, _req, res, _next) => {
 // ═════════════════════════════════════════════════════════════════════════════
 //  Start Server
 // ═════════════════════════════════════════════════════════════════════════════
-if (require.main === module) {
+if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, () => {
     logger.info(`DPI Engine backend running on http://localhost:${PORT}`);
     logger.info(`Swagger docs available at http://localhost:${PORT}/api/docs`);
