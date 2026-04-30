@@ -729,11 +729,15 @@ app.use((err, _req, res, _next) => {
 // ═════════════════════════════════════════════════════════════════════════════
 //  Start Server
 // ═════════════════════════════════════════════════════════════════════════════
-server.listen(PORT, () => {
-  logger.info(`DPI Engine backend running on http://localhost:${PORT}`);
-  logger.info(`Swagger docs available at http://localhost:${PORT}/api/docs`);
-  logger.info(`WebSocket server attached on port ${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    logger.info(`DPI Engine backend running on http://localhost:${PORT}`);
+    logger.info(`Swagger docs available at http://localhost:${PORT}/api/docs`);
+    logger.info(`WebSocket server attached on port ${PORT}`);
+  });
+}
+
+module.exports = { app, server, io };
 
 // Graceful shutdown
 process.on('SIGINT', () => {

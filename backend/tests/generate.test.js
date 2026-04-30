@@ -95,38 +95,13 @@ function createMockProcess(exitCode = 0, stderrOutput = '') {
 }
 
 // ─── Load server (after all mocks are in place) ──────────────────────────────
-// We need a reference to the express app, but server.js calls server.listen().
-// To avoid binding the port, we'll extract the app from the module.
-
-let app;
+const { app } = require('../server');
 
 beforeAll(() => {
   // Suppress console output from Winston during tests
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-  // Prevent server.listen from actually binding
-  const http = require('http');
-  const originalCreateServer = http.createServer;
-  jest.spyOn(http, 'createServer').mockImplementation((a) => {
-    app = a;
-    const mockServer = {
-      listen: jest.fn((port, cb) => cb && cb()),
-      close: jest.fn((cb) => cb && cb()),
-      on: jest.fn(),
-      address: jest.fn().mockReturnValue({ port: 3001 }),
-    };
-    // Socket.io needs to attach to something
-    mockServer._events = {};
-    return mockServer;
-  });
-
-  // Now require the server module
-  require('../server');
-
-  // Restore createServer so Supertest can create ephemeral servers
-  http.createServer.mockRestore();
 });
 
 beforeEach(() => {
@@ -144,7 +119,7 @@ describe('POST /api/v1/generate', () => {
   describe('Happy Path', () => {
     
     test('1. valid full body → 202 with jobId and filename', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -162,7 +137,7 @@ describe('POST /api/v1/generate', () => {
     });
 
     test('2. only required fields (protocols) → 202 with defaults applied', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -175,7 +150,7 @@ describe('POST /api/v1/generate', () => {
     });
 
     test('3. minimum packet count (100) → 202', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -186,7 +161,7 @@ describe('POST /api/v1/generate', () => {
     });
 
     test('4. maximum packet count (10000) → 202', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -249,7 +224,7 @@ describe('POST /api/v1/generate', () => {
     test('10. invalid ipRange format → passes Zod (no server-side CIDR regex) but spawns Python', async () => {
       // Note: The backend Zod schema uses z.string().optional() for ipRange, 
       // so any string is accepted. CIDR validation is only client-side.
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -265,7 +240,7 @@ describe('POST /api/v1/generate', () => {
   describe('Response Shape', () => {
 
     test('12. response always has { success, data: { jobId, filename } }', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -281,7 +256,7 @@ describe('POST /api/v1/generate', () => {
     });
 
     test('13. filename always ends with .pcap', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -291,7 +266,7 @@ describe('POST /api/v1/generate', () => {
     });
 
     test('14. jobId is a non-empty string or number', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(0));
+      mockSpawn.mockImplementation(() => createMockProcess(0));
 
       const res = await request(app)
         .post('/api/v1/generate')
@@ -308,7 +283,7 @@ describe('POST /api/v1/generate', () => {
   describe('Python Process Failure', () => {
 
     test('Python exit code non-zero → 500 GENERATION_FAILED', async () => {
-      mockSpawn.mockReturnValue(createMockProcess(1, 'Traceback: something broke'));
+      mockSpawn.mockImplementation(() => createMockProcess(1, 'Traceback: something broke'));
 
       const res = await request(app)
         .post('/api/v1/generate')
