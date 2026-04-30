@@ -3,6 +3,7 @@ import Sidebar, { type Page } from './components/Sidebar';
 import TopNav from './components/TopNav';
 import Dashboard from './components/Dashboard';
 import Upload from './components/Upload';
+import Generate from './components/Generate';
 import Rules from './components/Rules';
 import Logs from './components/Logs';
 import BottomNav from './components/BottomNav';
@@ -26,6 +27,7 @@ export default function App() {
     switch (activePage) {
       case 'dashboard': return 'DPI Engine Dashboard';
       case 'upload': return 'PCAP Data Processing';
+      case 'generate': return 'Synthetic PCAP Generator';
       case 'rules': return 'Security Rules Manager';
       case 'logs': return 'Network Traffic Logs';
       case 'settings': return 'System Settings';
@@ -56,6 +58,7 @@ export default function App() {
               >
                 {activePage === 'dashboard' && <Dashboard stats={stats} onPageChange={setActivePage} />}
                 {activePage === 'upload' && <Upload socket={socket} onPageChange={setActivePage} />}
+                {activePage === 'generate' && <Generate socket={socket} onPageChange={setActivePage} />}
                 {activePage === 'rules' && <Rules />}
                 {activePage === 'logs' && <Logs stats={stats} />}
                 {activePage === 'settings' && <SettingsPage />}

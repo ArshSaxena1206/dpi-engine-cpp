@@ -1,8 +1,8 @@
-import { LayoutDashboard, CloudUpload, Gavel, List, Shield, HelpCircle, ShieldCheck as Verified } from 'lucide-react';
+import { LayoutDashboard, CloudUpload, Zap, Gavel, List, Shield, HelpCircle, ShieldCheck as Verified } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import toast from 'react-hot-toast';
 
-export type Page = 'dashboard' | 'upload' | 'rules' | 'logs' | 'settings' | 'profile' | 'notifications' | 'help' | 'security';
+export type Page = 'dashboard' | 'upload' | 'generate' | 'rules' | 'logs' | 'settings' | 'profile' | 'notifications' | 'help' | 'security';
 
 interface SidebarProps {
   activePage: Page;
@@ -13,6 +13,7 @@ export default function Sidebar({ activePage, onPageChange }: SidebarProps) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'upload', label: 'Upload', icon: CloudUpload },
+    { id: 'generate', label: 'Generate', icon: Zap },
     { id: 'rules', label: 'Rules', icon: Gavel },
     { id: 'logs', label: 'Logs', icon: List },
   ];

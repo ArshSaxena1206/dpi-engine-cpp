@@ -6,6 +6,8 @@ Includes TLS Client Hello with SNI, HTTP, DNS, etc.
 
 import struct
 import random
+import argparse
+import os
 
 class PCAPWriter:
     def __init__(self, filename):
@@ -155,9 +157,35 @@ def create_dns_query(domain):
 
 
 def main():
-    import os
-    os.makedirs('pcaps', exist_ok=True)
-    writer = PCAPWriter('pcaps/test_dpi.pcap')
+    parser = argparse.ArgumentParser(
+        description='Generate a test PCAP file with various protocols for DPI testing.'
+    )
+    parser.add_argument('--output', default='pcaps/test_dpi.pcap',
+                        help='output file path (default: pcaps/test_dpi.pcap)')
+    parser.add_argument('--count', type=int, default=500,
+                        help='number of packets (default: 500)')
+    parser.add_argument('--protocols', default='http,https,dns',
+                        help='comma-separated protocols e.g. "http,https,dns,quic" (default: http,https,dns)')
+    parser.add_argument('--domains', default='youtube.com,google.com,github.com,facebook.com',
+                        help='comma-separated domain list (default: youtube.com,google.com,github.com,facebook.com)')
+    parser.add_argument('--ip-range', default='192.168.1.0/24',
+                        help='IP range string e.g. "192.168.1.0/24" (default: 192.168.1.0/24)')
+
+    args = parser.parse_args()
+
+    # Wire CLI args into existing variables
+    output_path = args.output
+    packet_count = args.count
+    protocols = [p.strip() for p in args.protocols.split(',')]
+    domain_list = [d.strip() for d in args.domains.split(',')]
+    ip_range = args.ip_range
+
+    # Ensure output directory exists
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    
+    writer = PCAPWriter(output_path)
     
     # Source: User's machine
     user_mac = '00:11:22:33:44:55'
@@ -275,7 +303,7 @@ def main():
         seq_base += 1000
     
     writer.close()
-    print(f"Created test_dpi.pcap with test traffic")
+    print(f"Created {output_path} with test traffic")
     print(f"  - {len(tls_connections)} TLS connections with SNI")
     print(f"  - {len(http_connections)} HTTP connections")
     print(f"  - {len(dns_queries)} DNS queries")

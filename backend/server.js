@@ -94,6 +94,17 @@ const uploadLimiter = rateLimit({
   },
 });
 
+const generateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many generate requests. Max 5 per minute.', details: null },
+  },
+});
+
 // ─── Swagger / OpenAPI ───────────────────────────────────────────────────────
 const swaggerSpec = swaggerJsdoc({
   definition: {
@@ -170,6 +181,17 @@ const ruleSchema = z.object({
   type:    z.enum(['app', 'domain', 'ip']),
   value:   z.string().min(1, 'Value must not be empty'),
   enabled: z.boolean(),
+});
+
+const generateSchema = z.object({
+  packetCount: z.number().int().min(100).max(10000).default(500),
+  protocols: z.array(
+    z.enum(['http', 'https', 'dns', 'quic'])
+  ).min(1, 'Select at least one protocol'),
+  domains: z.array(z.string()).optional().default([
+    'youtube.com', 'google.com', 'github.com'
+  ]),
+  ipRange: z.string().optional().default('192.168.1.0/24')
 });
 
 // Validation middleware factory
@@ -546,6 +568,136 @@ router.get('/download/:filename', (req, res, next) => {
     return next({ status: 404, code: 'FILE_NOT_FOUND', message: 'Output file not found' });
   }
   res.download(filePath);
+});
+
+// ──────────────── Generate (PCAP Synthesis) ──────────────────────────────────
+
+/**
+ * DATA FLOW ARCHITECTURE:
+ * 
+ * [Frontend (Generate.tsx)]
+ *           │
+ *           ▼ POST /api/v1/generate
+ *           │
+ * [Backend (server.js - Express)]
+ *           │
+ *           ▼ spawn python
+ *           │
+ * [generate_test_pcap.py]
+ * 
+ * @swagger
+ * /api/v1/generate:
+ *   post:
+ *     tags: [Processing]
+ *     summary: Generate a synthetic PCAP file
+ *     description: Runs a Python script to generate a PCAP file and queues it for processing. Returns a jobId to track via WebSocket.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               packetCount:
+ *                 type: integer
+ *               protocols:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               domains:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               ipRange:
+ *                 type: string
+ *     responses:
+ *       202:
+ *         description: Job queued
+ *       400:
+ *         description: Validation error
+ *       429:
+ *         description: Rate limit exceeded
+ *       500:
+ *         description: Generation failed
+ */
+router.post('/generate', generateLimiter, validate(generateSchema), (req, res, next) => {
+  const { packetCount, protocols, domains, ipRange } = req.validated;
+  const filename = `generated_${Date.now()}.pcap`;
+  const outputPath = path.join(__dirname, 'uploads', filename);
+
+  const genJobId = 'gen_' + Date.now();
+  io.emit('job:progress', { jobId: genJobId, progress: 0, stage: 'Initializing generator...' });
+
+  setTimeout(() => {
+    io.emit('job:progress', { jobId: genJobId, progress: 40, stage: 'Generating packets...' });
+  }, 500);
+
+  setTimeout(() => {
+    io.emit('job:progress', { jobId: genJobId, progress: 80, stage: 'Writing PCAP file...' });
+  }, 1500);
+
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  const args = [
+    path.join(__dirname, '..', 'generate_test_pcap.py'),
+    '--output', outputPath,
+    '--count', packetCount.toString(),
+    '--protocols', protocols.join(','),
+    '--domains', domains.join(','),
+    '--ip-range', ipRange
+  ];
+
+  const { spawn } = require('child_process');
+  const pyProcess = spawn(pythonCmd, args);
+
+  let stderr = '';
+  pyProcess.stderr.on('data', (data) => {
+    stderr += data.toString();
+  });
+
+  pyProcess.on('close', async (code) => {
+    if (code === 0) {
+      try {
+        const safeName = 'generated_pcap';
+        const finalOutputFilename = `filtered_${Date.now()}_${safeName}.pcap`;
+        const finalOutputPath = path.join(__dirname, 'output', finalOutputFilename);
+
+        let jobId = genJobId;
+
+        if (pcapQueue.client.status === 'ready') {
+          const job = await createPacketJob(
+            pcapQueue,
+            outputPath,
+            finalOutputPath,
+            finalOutputFilename,
+            safeName
+          );
+          jobId = job.id;
+          logger.info('PCAP generation queued', { jobId, originalName: safeName });
+        } else {
+          logger.warn('Redis is down, skipping queue. Returning generated file path.');
+          setTimeout(() => {
+             io.emit('job:done', { jobId: genJobId, stats: latestStats, outputFile: filename });
+          }, 1000);
+        }
+
+        res.status(202).json({
+          success: true,
+          data: {
+            jobId,
+            filename
+          }
+        });
+      } catch (err) {
+        next(err);
+      }
+    } else {
+      logger.error('Generation failed', { code: 'GENERATION_FAILED', stderr });
+      res.status(500).json({
+        success: false,
+        error: { code: 'GENERATION_FAILED', message: 'Failed to generate PCAP', details: stderr }
+      });
+    }
+  });
 });
 
 // Mount router
