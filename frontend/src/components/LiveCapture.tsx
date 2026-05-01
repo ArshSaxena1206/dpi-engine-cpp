@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Radio, Cpu, Save, AlertTriangle, ChevronDown, 
-  Square, CheckCircle2, XCircle, Download, RefreshCw 
+  Square, CheckCircle2, XCircle, Download, RefreshCw, LayoutDashboard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
@@ -23,7 +23,7 @@ interface LiveCaptureProps {
 
 type CaptureState = 'idle' | 'checking' | 'ready' | 'npcap-missing' | 'capturing' | 'complete' | 'error';
 
-export default function LiveCapture({ socket, isCapturing, setIsCapturing }: LiveCaptureProps) {
+export default function LiveCapture({ socket, onPageChange, isCapturing, setIsCapturing }: LiveCaptureProps) {
   const [state, setState] = useState<CaptureState>('idle');
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [fetchingInterfaces, setFetchingInterfaces] = useState(false);
@@ -219,6 +219,12 @@ export default function LiveCapture({ socket, isCapturing, setIsCapturing }: Liv
       await stopCapture(sessionId);
     } catch (err: unknown) {
       toast.error('Failed to stop capture: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      // Force clear the state so the user isn't stuck forever if the backend lost the session
+      setIsCapturing(false);
+      localStorage.removeItem('activeCaptureSessionId');
+      setSessionId(null);
+      setState('ready');
     }
   };
 
@@ -580,11 +586,20 @@ export default function LiveCapture({ socket, isCapturing, setIsCapturing }: Liv
                 Download PCAP
               </button>
             )}
+            {autoAnalyze && resultStats && (
+              <button
+                onClick={() => onPageChange('dashboard')}
+                className="flex-1 py-3 bg-[#E3FCEF]/60 hover:bg-[#E3FCEF] text-[#006644] rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                View Dashboard
+              </button>
+            )}
             <button
               onClick={resetState}
               className={cn(
                 "py-3 font-bold rounded-xl transition-all",
-                downloadPath 
+                downloadPath || (autoAnalyze && resultStats)
                   ? "flex-1 bg-surface-container-high hover:bg-outline-variant text-on-surface" 
                   : "w-full bg-primary hover:bg-primary-container text-white"
               )}

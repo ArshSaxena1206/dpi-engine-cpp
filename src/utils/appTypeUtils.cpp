@@ -27,6 +27,15 @@ std::string appTypeToString(AppType type) {
         case AppType::DISCORD:    return "Discord";
         case AppType::GITHUB:     return "GitHub";
         case AppType::CLOUDFLARE: return "Cloudflare";
+        case AppType::SLACK:      return "Slack";
+        case AppType::REDDIT:     return "Reddit";
+        case AppType::TWITCH:     return "Twitch";
+        case AppType::LINKEDIN:   return "LinkedIn";
+        case AppType::PINTEREST:  return "Pinterest";
+        case AppType::SNAPCHAT:   return "Snapchat";
+        case AppType::OPENAI:     return "OpenAI/ChatGPT";
+        case AppType::STEAM:      return "Steam";
+        case AppType::DROPBOX:    return "Dropbox";
         default:                  return "Unknown";
     }
 }
