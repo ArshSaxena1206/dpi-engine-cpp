@@ -46,6 +46,8 @@ export default function LiveCapture({ socket, isCapturing, setIsCapturing }: Liv
   const [resultStats, setResultStats] = useState<{ forwarded: number; dropped: number; total: number } | null>(null);
   const [downloadPath, setDownloadPath] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  
+  const jobIdRef = useRef<string | null>(null);
 
   // ── Initialization ──────────────────────────────────────────────────────────
   
@@ -127,6 +129,7 @@ export default function LiveCapture({ socket, isCapturing, setIsCapturing }: Liv
         setDownloadPath(data.downloadPath || null);
         toast.success('Capture complete');
       } else {
+        if (data.jobId) jobIdRef.current = data.jobId;
         setJobStage('Initializing analysis...');
       }
     };
@@ -142,14 +145,14 @@ export default function LiveCapture({ socket, isCapturing, setIsCapturing }: Liv
     };
 
     const onJobProgress = (data: { jobId: string; progress: number; stage: string }) => {
-      if (state === 'complete') {
+      if (jobIdRef.current === data.jobId) {
         setJobProgress(data.progress);
         setJobStage(data.stage);
       }
     };
 
     const onJobDone = (data: { jobId: string; stats: { metrics: { forwarded: number; dropped: number; totalPackets: number } }; outputFile: string }) => {
-      if (state === 'complete') {
+      if (jobIdRef.current === data.jobId) {
         setJobProgress(100);
         setJobStage('Analysis Complete');
         setDownloadPath(data.outputFile);
@@ -177,18 +180,6 @@ export default function LiveCapture({ socket, isCapturing, setIsCapturing }: Liv
     };
   }, [socket, sessionId, state, setIsCapturing]);
 
-  // Clean up on unmount if capturing
-  useEffect(() => {
-    return () => {
-      if (isCapturing && sessionId) {
-         // Stop the capture on component unmount
-         stopCapture(sessionId).catch(() => {});
-         setIsCapturing(false);
-         localStorage.removeItem('activeCaptureSessionId');
-      }
-    };
-  }, [isCapturing, sessionId, setIsCapturing]);
-
   // ── Actions ───────────────────────────────────────────────────────────────
   
   const handleStartCapture = async () => {
@@ -201,6 +192,7 @@ export default function LiveCapture({ socket, isCapturing, setIsCapturing }: Liv
     setResultStats(null);
     setDownloadPath(null);
     setErrorMessage('');
+    jobIdRef.current = null;
 
     setState('capturing');
     try {
