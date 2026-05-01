@@ -4,6 +4,7 @@ import TopNav from './components/TopNav';
 import Dashboard from './components/Dashboard';
 import Upload from './components/Upload';
 import Generate from './components/Generate';
+import LiveCapture from './components/LiveCapture';
 import Rules from './components/Rules';
 import Logs from './components/Logs';
 import BottomNav from './components/BottomNav';
@@ -21,6 +22,7 @@ import SecurityStatusPage from './components/SecurityStatusPage';
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
+  const [isCapturing, setIsCapturing] = useState(false);
   const { socket, status, stats } = useSocket();
 
   const getPageTitle = () => {
@@ -28,6 +30,7 @@ export default function App() {
       case 'dashboard': return 'DPI Engine Dashboard';
       case 'upload': return 'PCAP Data Processing';
       case 'generate': return 'Synthetic PCAP Generator';
+      case 'live': return 'Live Packet Capture';
       case 'rules': return 'Security Rules Manager';
       case 'logs': return 'Network Traffic Logs';
       case 'settings': return 'System Settings';
@@ -41,7 +44,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar activePage={activePage} onPageChange={setActivePage} />
+      <Sidebar activePage={activePage} onPageChange={setActivePage} isCapturing={isCapturing} />
       
       <div className="flex-1 flex flex-col md:ml-64 w-full h-screen overflow-hidden">
         <TopNav title={getPageTitle()} connectionStatus={status} onPageChange={setActivePage} />
@@ -59,6 +62,7 @@ export default function App() {
                 {activePage === 'dashboard' && <Dashboard stats={stats} onPageChange={setActivePage} />}
                 {activePage === 'upload' && <Upload socket={socket} onPageChange={setActivePage} />}
                 {activePage === 'generate' && <Generate socket={socket} onPageChange={setActivePage} />}
+                {activePage === 'live' && <LiveCapture socket={socket} onPageChange={setActivePage} isCapturing={isCapturing} setIsCapturing={setIsCapturing} />}
                 {activePage === 'rules' && <Rules />}
                 {activePage === 'logs' && <Logs stats={stats} />}
                 {activePage === 'settings' && <SettingsPage />}

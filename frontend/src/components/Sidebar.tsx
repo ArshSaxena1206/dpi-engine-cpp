@@ -1,19 +1,20 @@
-import { LayoutDashboard, CloudUpload, Zap, Gavel, List, Shield, HelpCircle, ShieldCheck as Verified } from 'lucide-react';
+import { LayoutDashboard, CloudUpload, Zap, Gavel, List, Shield, HelpCircle, ShieldCheck as Verified, Radio } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import toast from 'react-hot-toast';
 
-export type Page = 'dashboard' | 'upload' | 'generate' | 'rules' | 'logs' | 'settings' | 'profile' | 'notifications' | 'help' | 'security';
+export type Page = 'dashboard' | 'upload' | 'generate' | 'live' | 'rules' | 'logs' | 'settings' | 'profile' | 'notifications' | 'help' | 'security';
 
 interface SidebarProps {
   activePage: Page;
   onPageChange: (page: Page) => void;
+  isCapturing?: boolean;
 }
 
-export default function Sidebar({ activePage, onPageChange }: SidebarProps) {
+export default function Sidebar({ activePage, onPageChange, isCapturing = false }: SidebarProps) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'upload', label: 'Upload', icon: CloudUpload },
     { id: 'generate', label: 'Generate', icon: Zap },
+    { id: 'live', label: 'Live Capture', icon: Radio },
     { id: 'rules', label: 'Rules', icon: Gavel },
     { id: 'logs', label: 'Logs', icon: List },
   ];
@@ -54,7 +55,13 @@ export default function Sidebar({ activePage, onPageChange }: SidebarProps) {
                   )}
                 >
                   <Icon className={cn("w-5 h-5", isActive ? "fill-white/20" : "")} />
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                  {item.id === 'live' && isCapturing && (
+                    <span className="relative flex h-2.5 w-2.5 ml-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-error"></span>
+                    </span>
+                  )}
                 </button>
               </li>
             );

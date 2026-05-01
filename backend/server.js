@@ -12,6 +12,7 @@ const cors         = require('cors');
 const { exec }     = require('child_process');
 const path         = require('path');
 const fs           = require('fs');
+const os           = require('os');
 const Queue        = require('bull');
 const { z }        = require('zod');
 const sanitize     = require('sanitize-filename');
@@ -563,11 +564,16 @@ router.get('/download/:filename', (req, res, next) => {
   const safeName = sanitize(req.params.filename);
   if (!safeName) return next({ status: 400, code: 'INVALID_FILENAME', message: 'Invalid filename' });
 
-  const filePath = path.join(__dirname, 'output', safeName);
-  if (!fs.existsSync(filePath)) {
+  const outputFilePath = path.join(__dirname, 'output', safeName);
+  const uploadsFilePath = path.join(__dirname, 'uploads', safeName);
+
+  if (fs.existsSync(outputFilePath)) {
+    return res.download(outputFilePath);
+  } else if (fs.existsSync(uploadsFilePath)) {
+    return res.download(uploadsFilePath);
+  } else {
     return next({ status: 404, code: 'FILE_NOT_FOUND', message: 'Output file not found' });
   }
-  res.download(filePath);
 });
 
 // ──────────────── Generate (PCAP Synthesis) ──────────────────────────────────
@@ -707,6 +713,443 @@ router.post('/generate', generateLimiter, validate(generateSchema), (req, res, n
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  LIVE CAPTURE — Infrastructure
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Map of active capture sessions: sessionId → session metadata */
+const activeSessions = new Map();
+
+/** 30-second cache for the interface list to avoid repeated Python spawns */
+let interfaceCache = null;
+let interfaceCacheTime = 0;
+const INTERFACE_CACHE_TTL = 30_000;
+
+/** Rate limiter: POST /api/v1/capture/start — max 3/min (captures are expensive) */
+const captureLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many capture requests. Max 3 per minute.', details: null },
+  },
+});
+
+/** Rate limiter: GET /api/v1/capture/interfaces — max 10/min */
+const interfacesLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many interface queries. Max 10 per minute.', details: null },
+  },
+});
+
+/** Zod schema for POST /api/v1/capture/start */
+const captureSchema = z.object({
+  interface:   z.string().min(1, 'Interface required'),
+  duration:    z.number().int().refine(v => [30, 60, 300].includes(v), {
+    message: 'Duration must be 30, 60, or 300 seconds',
+  }),
+  filter:      z.string().optional().default(''),
+  autoAnalyze: z.boolean().default(true),
+});
+
+/**
+ * Internal helper — check npcap installation.
+ * Returns { installed: boolean, path: string|null }
+ */
+function checkNpcapInstalled() {
+  const npcapDir   = 'C:\\Windows\\System32\\Npcap';
+  const wpcapDll   = 'C:\\Windows\\SysWOW64\\wpcap.dll';
+  const wpcapSys32 = 'C:\\Windows\\System32\\wpcap.dll';
+  if (fs.existsSync(npcapDir)) {
+    return { installed: true, path: npcapDir };
+  }
+  if (fs.existsSync(wpcapDll) || fs.existsSync(wpcapSys32)) {
+    return { installed: true, path: wpcapDll };
+  }
+  return { installed: false, path: null };
+}
+
+/**
+ * Internal helper — resolve python command ('python' → 'python3' fallback).
+ * Returns the command string that works, or 'python' if both fail.
+ */
+async function resolvePythonCmd() {
+  return new Promise((resolve) => {
+    exec('python --version', (err) => {
+      if (!err) return resolve('python');
+      exec('python3 --version', (err2) => {
+        resolve(err2 ? 'python' : 'python3');
+      });
+    });
+  });
+}
+
+/**
+ * Internal helper — handle a completed capture (natural end or manual stop).
+ * Feeds output into Bull if autoAnalyze; emits capture:complete either way.
+ */
+async function handleCaptureCompletion(sessionId, doneData) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  const { outputPath, outputFilename, autoAnalyze } = session;
+
+  if (autoAnalyze) {
+    try {
+      const finalOutputFilename = `filtered_${Date.now()}_captured.pcap`;
+      const finalOutputPath     = path.join(__dirname, 'output', finalOutputFilename);
+      const job = await createPacketJob(pcapQueue, outputPath, finalOutputPath, finalOutputFilename, 'live_capture');
+      io.emit('capture:complete', { sessionId, autoAnalyze: true, jobId: job.id });
+      logger.info('Capture queued for analysis', { sessionId, jobId: job.id });
+    } catch (err) {
+      logger.error('Failed to queue captured PCAP', { sessionId, error: err.message });
+      io.emit('capture:error', { sessionId, message: 'Failed to queue for analysis: ' + err.message });
+    }
+  } else {
+    io.emit('capture:complete', {
+      sessionId,
+      autoAnalyze: false,
+      downloadPath: outputFilename,
+    });
+  }
+
+  activeSessions.delete(sessionId);
+}
+
+// ─── Capture Routes ───────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/v1/capture/check-npcap:
+ *   get:
+ *     tags: [Capture]
+ *     summary: Check if npcap is installed on the host
+ *     responses:
+ *       200:
+ *         description: npcap installation status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     installed:
+ *                       type: boolean
+ *                     path:
+ *                       type: string
+ *                       nullable: true
+ */
+router.get('/capture/check-npcap', (_req, res) => {
+  const result = checkNpcapInstalled();
+  res.json({ success: true, data: result });
+});
+
+/**
+ * @swagger
+ * /api/v1/capture/interfaces:
+ *   get:
+ *     tags: [Capture]
+ *     summary: List available network interfaces
+ *     responses:
+ *       200:
+ *         description: Array of network interfaces
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:          { type: string }
+ *                       name:        { type: string }
+ *                       description: { type: string }
+ *                       ipAddress:   { type: string }
+ *                       isUp:        { type: boolean }
+ *       503:
+ *         description: Could not enumerate interfaces
+ */
+router.get('/capture/interfaces', interfacesLimiter, async (_req, res, next) => {
+  // Serve from cache if fresh
+  if (interfaceCache && Date.now() - interfaceCacheTime < INTERFACE_CACHE_TTL) {
+    return res.json({ success: true, data: interfaceCache });
+  }
+
+  try {
+    const pythonCmd = await resolvePythonCmd();
+
+    // Use python to map NPF GUIDs to friendly Windows names (e.g., Wi-Fi, Ethernet)
+    const cmd = `${pythonCmd} -c "from scapy.all import get_if_list; from scapy.arch.windows import get_windows_if_list; import json; win_ifs=get_windows_if_list(); g2n={i.get('guid','').lower(): i.get('name','') for i in win_ifs}; res=[{'id':s, 'name': 'Loopback (Localhost)' if 'Loopback' in s else g2n.get(s[s.find('{'):s.find('}')+1].lower(), s)} for s in get_if_list()]; print(json.dumps(res))"`;
+
+    const mappedInterfaces = await new Promise((resolve) => {
+      exec(cmd, { timeout: 10_000 }, (err, stdout) => {
+        if (err) return resolve([]);
+        try { resolve(JSON.parse(stdout.trim())); } catch { resolve([]); }
+      });
+    });
+
+    // Node os.networkInterfaces() gives IPs and Up/Down status mapped by friendly name
+    const nodeIfaces = os.networkInterfaces();
+    const friendlyMap = {};
+    for (const [name, addrs] of Object.entries(nodeIfaces)) {
+      if (!addrs) continue;
+      const ipv4 = addrs.find(a => a.family === 'IPv4');
+      friendlyMap[name.toLowerCase()] = {
+        name,
+        ipAddress: ipv4 ? ipv4.address : '',
+        isUp:      addrs.some(a => !a.internal),
+      };
+    }
+
+    // Merge Python's GUID mapping with Node.js IP/Status info
+    const merged = mappedInterfaces.map(iface => {
+      const nodeInfo = friendlyMap[iface.name.toLowerCase()];
+      return {
+        id:          iface.id,
+        name:        iface.name,
+        description: iface.id,
+        ipAddress:   nodeInfo ? nodeInfo.ipAddress : '',
+        isUp:        nodeInfo ? nodeInfo.isUp : true,
+      };
+    });
+
+    interfaceCache     = merged;
+    interfaceCacheTime = Date.now();
+    res.json({ success: true, data: merged });
+  } catch (err) {
+    next({ status: 503, code: 'INTERFACE_ERROR', message: 'Failed to enumerate interfaces', details: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/capture/start:
+ *   post:
+ *     tags: [Capture]
+ *     summary: Start a live packet capture session
+ *     description: >
+ *       Spawns capture_live.py. Returns immediately with a sessionId.
+ *       Track progress via WebSocket events capture:stats / capture:complete / capture:error.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [interface, duration]
+ *             properties:
+ *               interface:
+ *                 type: string
+ *               duration:
+ *                 type: integer
+ *                 enum: [30, 60, 300]
+ *               filter:
+ *                 type: string
+ *               autoAnalyze:
+ *                 type: boolean
+ *     responses:
+ *       202:
+ *         description: Capture started
+ *       400:
+ *         description: Validation error or npcap not installed
+ *       429:
+ *         description: Rate limit exceeded
+ */
+router.post('/capture/start', captureLimiter, validate(captureSchema), async (req, res, next) => {
+  const { interface: iface, duration, filter: bpfFilter, autoAnalyze } = req.validated;
+
+  // Check npcap
+  const npcap = checkNpcapInstalled();
+  if (!npcap.installed) {
+    return next({ status: 400, code: 'NPCAP_NOT_FOUND', message: 'npcap is not installed on this machine' });
+  }
+
+  const sessionId      = `capture_${Date.now()}`;
+  const outputFilename = `capture_${Date.now()}.pcap`;
+  const outputPath     = path.join(__dirname, 'uploads', outputFilename);
+  const scriptPath     = path.join(__dirname, '..', 'capture_live.py');
+
+  let pythonCmd;
+  try {
+    pythonCmd = await resolvePythonCmd();
+  } catch {
+    pythonCmd = 'python';
+  }
+
+  const args = [
+    scriptPath,
+    '--output',    outputPath,
+    '--duration',  String(duration),
+    '--interface', iface,
+    '--stats-interval', '1',
+  ];
+  if (bpfFilter) args.push('--filter', bpfFilter);
+
+  const { spawn } = require('child_process');
+  const pyProcess = spawn(pythonCmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  // Store session immediately so stop can find it
+  activeSessions.set(sessionId, {
+    process:        pyProcess,
+    startTime:      Date.now(),
+    interface:      iface,
+    duration,
+    outputPath,
+    outputFilename,
+    autoAnalyze,
+    completed:      false,
+  });
+
+  logger.info('Capture session started', { sessionId, iface, duration, autoAnalyze });
+
+  // ── Parse stdout lines ──────────────────────────────────────────────────────
+  let stdoutBuf = '';
+  pyProcess.stdout.on('data', (chunk) => {
+    stdoutBuf += chunk.toString();
+    const lines = stdoutBuf.split('\n');
+    stdoutBuf = lines.pop(); // keep incomplete last line in buffer
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let msg;
+      try { msg = JSON.parse(trimmed); } catch { continue; }
+
+      if (msg.type === 'stats') {
+        const elapsed = msg.elapsed || 0;
+        const prevPkt  = msg.packets - (msg.pps || 0);
+        io.emit('capture:stats', {
+          sessionId,
+          packets: msg.packets,
+          bytes:   msg.bytes,
+          elapsed,
+          pps:     msg.pps || 0,
+        });
+      } else if (msg.type === 'done') {
+        const session = activeSessions.get(sessionId);
+        if (session && !session.completed) {
+          session.completed = true;
+          handleCaptureCompletion(sessionId, msg).catch(err => {
+            logger.error('Completion handler failed', { sessionId, error: err.message });
+          });
+        }
+      } else if (msg.type === 'error') {
+        logger.error('Capture process error', { sessionId, message: msg.message });
+        io.emit('capture:error', { sessionId, message: msg.message });
+        activeSessions.delete(sessionId);
+      }
+    }
+  });
+
+  let stderrBuf = '';
+  pyProcess.stderr.on('data', (d) => { stderrBuf += d.toString(); });
+
+  pyProcess.on('error', (err) => {
+    logger.error('Failed to start capture process', { sessionId, error: err.message });
+    io.emit('capture:error', { sessionId, message: `Failed to start capture: ${err.message}` });
+    activeSessions.delete(sessionId);
+  });
+
+  pyProcess.on('close', (code) => {
+    const session = activeSessions.get(sessionId);
+    if (session && !session.completed) {
+      // Process exited without printing 'done' — treat as error
+      if (code !== 0) {
+        logger.error('Capture process exited with error', { sessionId, code, stderr: stderrBuf });
+        io.emit('capture:error', { sessionId, message: stderrBuf || `Capture exited with code ${code}` });
+        activeSessions.delete(sessionId);
+      }
+    }
+  });
+
+  // Respond immediately
+  res.status(202).json({
+    success: true,
+    data: { sessionId, outputPath },
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/capture/stop:
+ *   post:
+ *     tags: [Capture]
+ *     summary: Manually stop an active capture session
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [sessionId]
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Capture stopped
+ *       404:
+ *         description: Session not found
+ */
+router.post('/capture/stop', async (req, res, next) => {
+  const { sessionId } = req.body;
+  if (!sessionId) {
+    return next({ status: 400, code: 'MISSING_SESSION_ID', message: 'sessionId is required' });
+  }
+
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    return next({ status: 404, code: 'SESSION_NOT_FOUND', message: `Capture session ${sessionId} not found` });
+  }
+
+  logger.info('Manually stopping capture session', { sessionId });
+
+  // Mark completed before killing so the close handler doesn't emit error
+  session.completed = true;
+
+  try {
+    session.process.kill();
+  } catch (e) {
+    logger.warn('Could not kill capture process', { sessionId, error: e.message });
+  }
+
+  // Trigger completion logic (write whatever was captured so far)
+  await handleCaptureCompletion(sessionId, {}).catch(err => {
+    logger.error('Stop completion handler failed', { sessionId, error: err.message });
+  });
+
+  res.json({ success: true, data: { sessionId, stopped: true } });
+});
+
+// ─── Session cleanup on client disconnect ─────────────────────────────────────
+io.on('connection', (socket) => {
+  // (existing connect logic is already wired above — this adds cleanup)
+  socket.on('disconnect', () => {
+    logger.info('WebSocket disconnected — cleaning up active captures', { socketId: socket.id });
+    for (const [sessionId, session] of activeSessions.entries()) {
+      try {
+        session.process.kill();
+        logger.info('Killed capture session on disconnect', { sessionId });
+      } catch (e) { /* already dead */ }
+    }
+    activeSessions.clear();
+  });
+});
+
 // Mount router
 app.use('/api/v1', router);
 
@@ -746,10 +1189,20 @@ if (process.env.NODE_ENV !== 'test') {
 
 module.exports = { app, server, io };
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  logger.info('Shutting down…');
+// Graceful shutdown — kill all active capture sessions first
+function gracefulShutdown(signal) {
+  logger.info(`Shutting down (${signal})…`);
+  for (const [sessionId, session] of activeSessions.entries()) {
+    try {
+      session.process.kill();
+      logger.info('Killed capture session', { sessionId });
+    } catch (e) { /* already dead */ }
+  }
+  activeSessions.clear();
   pcapQueue.close().then(() => {
     server.close(() => process.exit(0));
   });
-});
+}
+
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
