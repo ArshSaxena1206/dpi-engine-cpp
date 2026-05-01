@@ -43,6 +43,7 @@ build/
 cmake-build-debug/
 cmake-build-release/
 dpi-engine-extracted/
+dpi_engine
 
 # ========================
 # PCAP Files (can be large)
@@ -58,10 +59,11 @@ Thumbs.db
 desktop.ini
 
 # ========================
-# VS Code
+# IDEs & Tools
 # ========================
-.vscode/settings.json
-.vscode/launch.json
+.vscode/
+.agent/
+.agents/
 
 # ========================
 # Logs (general)
