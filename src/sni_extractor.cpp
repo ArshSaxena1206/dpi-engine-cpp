@@ -1,5 +1,4 @@
 #include "sni_extractor.h"
-#include <algorithm>
 #include <cstring>
 
 
@@ -330,5 +329,4 @@ std::optional<std::string> QUICSNIExtractor::extract(const uint8_t *payload,
   return std::nullopt;
 }
 
-} // namespace DPI
 } // namespace DPI
